@@ -1,0 +1,10 @@
+version: "3"
+
+services:
+  gopoliceapps:
+    container_name: gopoliceapps
+    image: gopoliceapps
+    restart: unless-stopped
+    environment:
+      - "WEBHOOK=${WEBHOOK}"
+      - "TIMEOUT=${TIMEOUT}"
