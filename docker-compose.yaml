@@ -6,5 +6,5 @@ services:
     image: gopoliceapps
     restart: unless-stopped
     environment:
+      - "TIMEOUT=10"
       - "WEBHOOK=${WEBHOOK}"
-      - "TIMEOUT=${TIMEOUT}"
