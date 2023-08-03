@@ -72,8 +72,8 @@ func main() {
 		}
 
 		var newApps []string
-		selector := "ol li div h4 span a"
-		doc.Find(selector).Each(func(_ int, s *goquery.Selection) {
+		var message string
+		doc.Find("ol li div h4 span a").Each(func(_ int, s *goquery.Selection) {
 			link, exists := s.Attr("href")
 			if !exists {
 				return
@@ -88,13 +88,23 @@ func main() {
 				return
 			}
 
-			err := session.Message(link)
-			if err != nil {
-				log.Println(err)
+			if message != "" {
+				message += "\n"
 			}
+
+			message += link
 		})
 
 		apps = newApps
 		init = true
+
+		if message == "" {
+			continue
+		}
+
+		err = session.Message(message)
+		if err != nil {
+			log.Println(err)
+		}
 	}
 }
