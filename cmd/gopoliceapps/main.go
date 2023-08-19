@@ -14,15 +14,14 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-type config struct {
-	Forum   string `json:"forum"`
-	Webhook string `json:"webhook"`
-}
-
 func main() {
 	log.SetFlags(log.Flags() | log.Lshortfile)
 
-	configs := []config{}
+	configs := []struct {
+		Forum   string `json:"forum"`
+		Webhook string `json:"webhook"`
+	}{}
+
 	if contents, err := os.ReadFile("config.json"); err != nil {
 		log.Fatal(err)
 	} else {
