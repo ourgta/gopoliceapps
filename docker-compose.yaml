@@ -7,4 +7,5 @@ services:
     restart: unless-stopped
     environment:
       - "TIMEOUT=10"
-      - "WEBHOOK=${WEBHOOK}"
+    volumes:
+      - "./config.json:/config.json"

@@ -1,4 +1,4 @@
-FROM golang:alpine3.18 AS build
+FROM golang:1-alpine AS build
 
 WORKDIR /usr/src/app
 
@@ -11,7 +11,7 @@ RUN go mod download
 
 RUN go build -ldflags="-s -w" -o /usr/local/bin/app cmd/gopoliceapps/main.go
 
-FROM alpine:3.18
+FROM alpine:latest
 
 COPY --from=build /usr/local/bin/app /app
 

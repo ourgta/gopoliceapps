@@ -6,16 +6,24 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type Session struct {
 	Webhook string
-	last    time.Time
+	last    struct {
+		time time.Time
+		mu   sync.RWMutex
+	}
 }
 
 func (session *Session) Message(content string) (err error) {
-	time.Sleep(time.Until(session.last.Add(2 * time.Second)))
+	session.last.mu.RLock()
+	last := session.last.time
+	session.last.mu.RUnlock()
+
+	time.Sleep(time.Until(last.Add(2 * time.Second)))
 
 	buf, err := json.Marshal(map[string]string{"content": content})
 	if err != nil {
@@ -26,15 +34,15 @@ func (session *Session) Message(content string) (err error) {
 	if err != nil {
 		return
 	}
-
-	session.last = time.Now()
-
-	func(resp *http.Response) {
-		err := resp.Body.Close()
-		if err != nil {
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
 			log.Println(err)
 		}
-	}(resp)
+	}()
+
+	session.last.mu.Lock()
+	session.last.time = time.Now()
+	session.last.mu.Unlock()
 
 	if resp.StatusCode != 204 {
 		err = errors.New(resp.Status)

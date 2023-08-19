@@ -1,110 +1,121 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"gopoliceapps/internal/discord"
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"golang.org/x/exp/slices"
 )
 
-func env(key string) (value string) {
-	value = os.Getenv(key)
-	if value == "" {
-		log.Fatalf("%v no provided", strings.ToLower(key))
-	}
-
-	return
+type config struct {
+	Forum   string `json:"forum"`
+	Webhook string `json:"webhook"`
 }
 
 func main() {
-	t := env("TIMEOUT")
-	timeout, err := strconv.Atoi(t)
+	log.SetFlags(log.Flags() | log.Lshortfile)
+
+	configs := []config{}
+	if contents, err := os.ReadFile("config.json"); err != nil {
+		log.Fatal(err)
+	} else {
+		if err := json.Unmarshal(contents, &configs); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	forums := map[string][]string{}
+	for _, config := range configs {
+		forums[config.Forum] = append(forums[config.Forum], config.Webhook)
+	}
+
+	timeout, err := strconv.Atoi(os.Getenv("TIMEOUT"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	webhook := env("WEBHOOK")
-	session := discord.Session{
-		Webhook: webhook,
-	}
+	var (
+		apps    = map[string][]string{}
+		session = discord.Session{}
+		init    bool
+	)
 
-	var apps []string
-	var last time.Time
-	init := false
+	ticker := time.NewTicker(time.Duration(timeout) * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		var (
+			newApps  = map[string][]string{}
+			messages = map[string]string{}
+		)
 
-	for {
-		time.Sleep(time.Until(last.Add(time.Duration(timeout) * time.Minute)))
-
-		doc, err := func() (doc *goquery.Document, err error) {
-			resp, err := http.Get("https://grandtheftarma.com/forum/64-applications/")
-			if err != nil {
-				return
-			}
-
-			last = time.Now()
-
-			defer func(resp *http.Response) {
-				err := resp.Body.Close()
+		for forum, webhooks := range forums {
+			doc, err := func() (doc *goquery.Document, err error) {
+				resp, err := http.Get(forum)
 				if err != nil {
-					log.Println(err)
+					return
 				}
-			}(resp)
+				defer func() {
+					if err := resp.Body.Close(); err != nil {
+						log.Println(err)
+					}
+				}()
 
-			if resp.StatusCode != 200 {
-				err = errors.New(resp.Status)
+				if resp.StatusCode != 200 {
+					err = errors.New(resp.Status)
+					return
+				}
+
+				doc, err = goquery.NewDocumentFromReader(resp.Body)
 				return
+			}()
+
+			if err != nil {
+				log.Println(err)
+				continue
 			}
 
-			doc, err = goquery.NewDocumentFromReader(resp.Body)
-			return
-		}()
+			doc.Find("ol li div h4 span a").Each(func(_ int, s *goquery.Selection) {
+				link, exists := s.Attr("href")
+				if !exists {
+					return
+				}
 
-		if err != nil {
-			log.Println(err)
-			continue
+				newApps[forum] = append(newApps[forum], link)
+				if !init {
+					return
+				}
+
+				if slices.Contains(apps[forum], link) {
+					return
+				}
+
+				for _, webhook := range webhooks {
+					if _, ok := messages[webhook]; !ok {
+						messages[webhook] = link
+						continue
+					}
+
+					messages[webhook] += "\n" + link
+				}
+			})
 		}
 
-		var newApps []string
-		var message string
-		doc.Find("ol li div h4 span a").Each(func(_ int, s *goquery.Selection) {
-			link, exists := s.Attr("href")
-			if !exists {
-				return
+		for webhook, message := range messages {
+			session.Webhook = webhook
+			err = session.Message(message)
+			if err != nil {
+				log.Println(err)
 			}
-
-			newApps = append(newApps, link)
-			if !init {
-				return
-			}
-
-			if slices.Contains(apps, link) {
-				return
-			}
-
-			if message != "" {
-				message += "\n"
-			}
-
-			message += link
-		})
+		}
 
 		apps = newApps
 		init = true
-
-		if message == "" {
-			continue
-		}
-
-		err = session.Message(message)
-		if err != nil {
-			log.Println(err)
-		}
 	}
 }
